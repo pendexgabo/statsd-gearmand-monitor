@@ -138,92 +138,93 @@ while ((c = getopt (argc, argv, "e:dvifH::t::P::h::p::s:N:")) != -1) {
     }
 
 
-	signal(SIGHUP, SIG_IGN);
+    signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
     signal(SIGCHLD, SIG_IGN);
     signal(SIGTERM, sigterm);
 
-	int sockfd = 0, n = 0;
-	char recvBuff[1024];
-	struct sockaddr_in gearmand_serv_addr; 
+    int sockfd = 0, n = 0;
+    char recvBuff[1024];
+    struct sockaddr_in gearmand_serv_addr; 
 
 
-	memset(recvBuff, '0',sizeof(recvBuff));
-	if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-	{
-		printf("\n Error : Could not create socket \n");
-		return 1;
-	} 
+    memset(recvBuff, '0',sizeof(recvBuff));
+    if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+        printf("\n Error : Could not create socket \n");
+        return 1;
+    } 
 
-	memset(&gearmand_serv_addr, '0', sizeof(gearmand_serv_addr)); 
+    memset(&gearmand_serv_addr, '0', sizeof(gearmand_serv_addr)); 
 
-	gearmand_serv_addr.sin_family = AF_INET;
-	gearmand_serv_addr.sin_port = htons(gearmand_port); 
+    gearmand_serv_addr.sin_family = AF_INET;
+    gearmand_serv_addr.sin_port = htons(gearmand_port); 
 
-	if(inet_pton(AF_INET, gearmand_host, &gearmand_serv_addr.sin_addr)<=0)
-	{
-		printf("\n inet_pton error occured\n");
-		return 1;
-	}
+    if(inet_pton(AF_INET, gearmand_host, &gearmand_serv_addr.sin_addr)<=0)
+    {
+        printf("\n inet_pton error occured\n");
+        return 1;
+    }
 
-	//daemon(0, 0);
+    //daemon(0, 0);
 
     statsd_link *_statsd_link;
 
     _statsd_link = statsd_init_with_namespace(statsd_host, statsd_port, metric_name);
 
 
-	while(running) {
+    while(running) {
 
-		if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-		{
-			printf("\n Error : Could not create socket \n");
-			return 1;
-		} 
+        if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+        {
+            printf("\n Error : Could not create socket \n");
+            return 1;
+        } 
 
-		if( connect(sockfd, (struct sockaddr *)&gearmand_serv_addr, sizeof(gearmand_serv_addr)) < 0)
-		{
-			printf("\n Error : Connect Failed to gearmand \n");
-			return 1;
-		}
+        if( connect(sockfd, (struct sockaddr *)&gearmand_serv_addr, sizeof(gearmand_serv_addr)) < 0)
+        {
+            printf("\n Error : Connect Failed to gearmand \n");
+            return 1;
+        }
 
-		write(sockfd, "status\n", strlen("status\n")); 
+        write(sockfd, "status\n", strlen("status\n")); 
 
-		while ( (n = read(sockfd, recvBuff, sizeof(recvBuff)-1)) > 0)
-		{
-			recvBuff[n] = 0;
+        while ( (n = read(sockfd, recvBuff, sizeof(recvBuff)-1)) > 0)
+        {
+            recvBuff[n] = 0;
 
-			if (recvBuff[n - 2] == '.' && recvBuff[n - 1] == '\n') {
-				recvBuff[n - 2] = 0;
-				break;
-			}
-		}
+            if (recvBuff[n - 2] == '.' && recvBuff[n - 1] == '\n') {
+                recvBuff[n - 2] = 0;
+                break;
+            }
+        }
 
-		close(sockfd);
+        close(sockfd);
 
-		char * pch;
-		pch = strtok (recvBuff, "\n");
-		while (pch != NULL)
-		{
-			char function_name[1024];
-			int queued, running, connected;
-			sscanf(pch, "%s\t%d\t%d\t%d", function_name, &queued, &running, &connected);
+        char * pch;
+        pch = strtok (recvBuff, "\n");
+        while (pch != NULL)
+        {
+            char function_name[1024];
+            int queued, running, connected;
+            sscanf(pch, "%s\t%d\t%d\t%d", function_name, &queued, &running, &connected);
 
-
-		    statsd_gauge(_statsd_link, _metric_name(function_name, "connected"), connected);
-		    statsd_gauge(_statsd_link, _metric_name(function_name, "queued") , queued);
-		    statsd_gauge(_statsd_link, _metric_name(function_name, "running") , running);
-
+            statsd_gauge(_statsd_link, _metric_name(function_name, "connected"), connected);
+            statsd_gauge(_statsd_link, _metric_name(function_name, "queued") , queued);
+            statsd_gauge(_statsd_link, _metric_name(function_name, "running") , running);
 
 
-			printf("function %s has a total of %d jobs queued %d running - %d workers connected\n", function_name, queued, running, connected);
-			pch = strtok (NULL, "\n");
-		}
+            if (debug) {
+                 syslog(LOG_INFO, "function %s has a total of %d jobs queued %d running - %d workers connected\n", function_name, queued, running, connected);
+            }
 
-		sleep(polling_interval);
-	}
+            pch = strtok (NULL, "\n");
+        }
 
-	statsd_finalize(_statsd_link);
+        sleep(polling_interval);
+    }
 
-	return 0;
+    statsd_finalize(_statsd_link);
+
+    return 0;
 }

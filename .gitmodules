@@ -1,0 +1,3 @@
+[submodule "lib/statsd-c-client"]
+	path = lib/statsd-c-client
+	url = git@github.com:pendexgabo/statsd-c-client.git

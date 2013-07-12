@@ -26,13 +26,13 @@ void sigterm(int sig)
 
 void showHelp() {
     printf("statsd-gearmand-monitor version %s\n", VERSION);
+    printf("author: Gabriel Sosa. @pendexgabo\n");
     printf("sends stats about gearmand jobs & workers to statsd\n\n");
     printf("Usage: statsd-gearmand-monitor [OPTIONS]\n");
     printf("\t-?                  this help\n");
     printf("\t-N <metric>         metric prefix to update (required)\n");
     printf("\t-h <host>           statsd host (default: %s)\n", STATSD_DEFAULT_HOST);
     printf("\t-p <port>           statsd port (default: %d)\n", STATSD_DEFAULT_PORT);
-    printf("\t-s <rate>           sample rate (default: %2.2f)\n", DEFAULT_SAMPLE_RATE);
     printf("\t-H <host>           gearman host (default: %s)\n", GEARMAND_DEFAULT_HOST);
     printf("\t-P <port>           gearman port (default: %d)\n", GEARMAND_DEFAULT_PORT);
     printf("\t-t <time>           polling rate (seconds) (default: %d)\n", DEFAULT_POLLING_INTERVAL);
@@ -68,7 +68,6 @@ int main(int argc, char *argv[]) {
     char *metric_name = NULL;
     int c;
 
-    float sample_rate = DEFAULT_SAMPLE_RATE;
     char *statsd_host = STATSD_DEFAULT_HOST;
     int statsd_port = STATSD_DEFAULT_PORT;
 
@@ -80,7 +79,7 @@ int main(int argc, char *argv[]) {
     int polling_interval = DEFAULT_POLLING_INTERVAL;
 
 
-while ((c = getopt (argc, argv, "e:dvifH::t::P::h::p::s:N:")) != -1) {
+while ((c = getopt (argc, argv, "e:dvifH:t::P::h:p::N:")) != -1) {
         switch (c) {
             case '?':
                 showHelp();
@@ -91,16 +90,15 @@ while ((c = getopt (argc, argv, "e:dvifH::t::P::h::p::s:N:")) != -1) {
                 strcpy(metric_name, optarg);
             break;
             case 'h': 
-                statsd_host = optarg;
+                statsd_host = malloc(strlen(optarg));
+                strcpy(statsd_host, optarg);
             break;
             case 'p':
                 statsd_port = atoi(optarg);
             break;
-            case 's':
-                sample_rate = (float) atof(optarg);
-            break;
             case 'H':
-                gearmand_host = optarg;
+                gearmand_host = malloc(strlen(optarg));
+                strcpy(gearmand_host, optarg);
             break;
             case 'P':
                 gearmand_port = atoi(optarg);
@@ -132,7 +130,6 @@ while ((c = getopt (argc, argv, "e:dvifH::t::P::h::p::s:N:")) != -1) {
         openlog("statsd-gearmand-monitor",  LOG_CONS | LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_USER);
         syslog(LOG_INFO, "statsd host: %s:%d", statsd_host, statsd_port);
         syslog(LOG_INFO, "metric name: %s", metric_name);
-        syslog(LOG_INFO, "sample rate: %2.2f", sample_rate);
         syslog(LOG_INFO, "polling interval: %d secs", polling_interval);
         syslog(LOG_INFO, "gearmand host: %s:%d", gearmand_host, gearmand_port);
     }
@@ -151,7 +148,7 @@ while ((c = getopt (argc, argv, "e:dvifH::t::P::h::p::s:N:")) != -1) {
     memset(recvBuff, '0',sizeof(recvBuff));
     if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
-        printf("\n Error : Could not create socket \n");
+        perror("error: Could not create socket \n");
         return 1;
     } 
 
@@ -162,14 +159,18 @@ while ((c = getopt (argc, argv, "e:dvifH::t::P::h::p::s:N:")) != -1) {
 
     if(inet_pton(AF_INET, gearmand_host, &gearmand_serv_addr.sin_addr)<=0)
     {
-        printf("\n inet_pton error occured\n");
+        perror("error: inet_pton error occured\n");
         return 1;
     }
 
-    //daemon(0, 0);
+    if (!foreground) {
+        if (debug) {
+            syslog(LOG_INFO, "sending process to background");
+        }
+        daemon(0, 0);
+    }
 
     statsd_link *_statsd_link;
-
     _statsd_link = statsd_init_with_namespace(statsd_host, statsd_port, metric_name);
 
 
@@ -177,13 +178,13 @@ while ((c = getopt (argc, argv, "e:dvifH::t::P::h::p::s:N:")) != -1) {
 
         if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
         {
-            printf("\n Error : Could not create socket \n");
+            perror("error : could not create socket \n");
             return 1;
         } 
 
         if( connect(sockfd, (struct sockaddr *)&gearmand_serv_addr, sizeof(gearmand_serv_addr)) < 0)
         {
-            printf("\n Error : Connect Failed to gearmand \n");
+            perror("error: connect Failed to gearmand \n");
             return 1;
         }
 
@@ -215,7 +216,7 @@ while ((c = getopt (argc, argv, "e:dvifH::t::P::h::p::s:N:")) != -1) {
 
 
             if (debug) {
-                 syslog(LOG_INFO, "function %s has a total of %d jobs queued %d running - %d workers connected\n", function_name, queued, running, connected);
+                 syslog(LOG_INFO, "function %s has a total of %d queued jobs - %d workers running - %d workers connected\n", function_name, queued, running, connected);
             }
 
             pch = strtok (NULL, "\n");

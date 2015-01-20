@@ -42,7 +42,7 @@ void showHelp() {
 }
 
 
-char * _metric_name(char *function, char *metric) {
+char * _forge_metric_name(char *function, char *metric) {
 
     char *metric_name = NULL;
 
@@ -62,6 +62,7 @@ char * _metric_name(char *function, char *metric) {
 
 }
 
+
 int main(int argc, char *argv[]) {
 
 
@@ -79,7 +80,7 @@ int main(int argc, char *argv[]) {
     int polling_interval = DEFAULT_POLLING_INTERVAL;
 
 
-while ((c = getopt (argc, argv, "e:dvifH:t::P::h:p::N:")) != -1) {
+    while ((c = getopt (argc, argv, "e:dvifH:t::P::h:p::N:")) != -1) {
         switch (c) {
             case '?':
                 showHelp();
@@ -146,20 +147,26 @@ while ((c = getopt (argc, argv, "e:dvifH:t::P::h:p::N:")) != -1) {
 
 
     memset(recvBuff, '0',sizeof(recvBuff));
-    if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        perror("error: Could not create socket \n");
+    if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("error: could not create socket \n");
         return 1;
     } 
+
+
+    /* resolve hostname */
+    struct hostent * he;
+    if ((he = gethostbyname(gearmand_host)) == NULL) {
+        perror("error: could not resolve host\n");
+        return 1;
+    }
 
     memset(&gearmand_serv_addr, '0', sizeof(gearmand_serv_addr)); 
 
     gearmand_serv_addr.sin_family = AF_INET;
     gearmand_serv_addr.sin_port = htons(gearmand_port); 
 
-    if(inet_pton(AF_INET, gearmand_host, &gearmand_serv_addr.sin_addr)<=0)
-    {
-        perror("error: inet_pton error occured\n");
+    if(memcpy(&gearmand_serv_addr.sin_addr, he->h_addr_list[0], he->h_length) <= 0) {
+        perror("error: memcpy error occured\n");
         return 1;
     }
 
@@ -176,22 +183,19 @@ while ((c = getopt (argc, argv, "e:dvifH:t::P::h:p::N:")) != -1) {
 
     while(running) {
 
-        if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-        {
+        if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
             perror("error : could not create socket \n");
             return 1;
         } 
 
-        if( connect(sockfd, (struct sockaddr *)&gearmand_serv_addr, sizeof(gearmand_serv_addr)) < 0)
-        {
+        if( connect(sockfd, (struct sockaddr *)&gearmand_serv_addr, sizeof(gearmand_serv_addr)) < 0) {
             perror("error: connect Failed to gearmand \n");
             return 1;
         }
 
         write(sockfd, "status\n", strlen("status\n")); 
 
-        while ( (n = read(sockfd, recvBuff, sizeof(recvBuff)-1)) > 0)
-        {
+        while ( (n = read(sockfd, recvBuff, sizeof(recvBuff)-1)) > 0) {
             recvBuff[n] = 0;
 
             if (recvBuff[n - 2] == '.' && recvBuff[n - 1] == '\n') {
@@ -203,16 +207,27 @@ while ((c = getopt (argc, argv, "e:dvifH:t::P::h:p::N:")) != -1) {
         close(sockfd);
 
         char * pch;
+
         pch = strtok (recvBuff, "\n");
-        while (pch != NULL)
-        {
+        while (pch != NULL) {
             char function_name[1024];
+            char * _metric_name = NULL;
+
             int queued, running, connected;
+
             sscanf(pch, "%s\t%d\t%d\t%d", function_name, &queued, &running, &connected);
 
-            statsd_gauge(_statsd_link, _metric_name(function_name, "connected"), connected);
-            statsd_gauge(_statsd_link, _metric_name(function_name, "queued") , queued);
-            statsd_gauge(_statsd_link, _metric_name(function_name, "running") , running);
+            _metric_name = _forge_metric_name(function_name, "connected");
+            statsd_gauge(_statsd_link, _metric_name, connected);
+            free(_metric_name);
+
+            _metric_name = _forge_metric_name(function_name, "queued");
+            statsd_gauge(_statsd_link, _metric_name , queued);
+            free(_metric_name);
+
+            _metric_name = _forge_metric_name(function_name, "running");
+            statsd_gauge(_statsd_link, _metric_name, running);
+            free(_metric_name);
 
 
             if (debug) {

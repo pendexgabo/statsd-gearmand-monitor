@@ -11,6 +11,6 @@
 
 #define DEFAULT_POLLING_INTERVAL 2
 
-#define VERSION "0.1"
+#define VERSION "0.2"
 
 #endif /* !STATSD_GEARMAND_MONITOR_H */
